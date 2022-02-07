@@ -1,0 +1,1 @@
+void Wuerfel( GLfloat fSeitenL );

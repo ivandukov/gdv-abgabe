@@ -1,0 +1,5 @@
+﻿  teil_1.cpp
+C:\Users\IvanDukov\source\repos\glut\glut\teil_1.cpp(5,10): fatal error C1083: Cannot open include file: 'GL/freeglut.h': No such file or directory
+  Wuerfel.cpp
+C:\Users\IvanDukov\source\repos\glut\glut\Wuerfel.cpp(5,10): fatal error C1083: Cannot open include file: 'GL/freeglut.h': No such file or directory
+  Generating Code...
