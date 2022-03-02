@@ -3,12 +3,19 @@
 #include <GL/SOIL.h>
 #include "Wuerfel.h"
 #include <string>
+#include <cstdlib> 
+#include <ctime> 
+
 using namespace std;
 
 bool ismovingforward = false;
 bool ismovingbackwards = false;
 bool ismovingleft = false;
 bool ismovingright = false;
+bool isOnTarget = false;
+bool customBool = true;
+
+//idea - map cube cordinates to robot cordinates
 
 /*  Macro for sin & cos in degrees */
 #define Cos(th) cos(PI_2/180*(th))
@@ -17,15 +24,17 @@ bool ismovingright = false;
 #define PI_2 3.1415926535898
 double translateforwardbackwards = 0.0;
 double translateleftright = 0.0;
+double secretCubePositionx = 0.0;
+double secretCubePositiony = 0.0;
 int points = 0;
 int timeLeft = 60000;
-GLuint tex_2d;         // Textur-ID
+GLuint tex_2d;         // Textur-ID, which does not work
 
 void move_robot()
 {
     glTranslatef(0.0, 0.0, translateforwardbackwards); // tatsaechliche Bewegung d. Baggers (vorwaerts)
     glTranslatef(translateleftright, 0.0, 0.0); // tatsaechliche Bewegung d. Baggers (seitlich)
-    glRotatef(atan2(translateleftright, translateforwardbackwards) * 180 / 3.14, 0, 1, 0);
+    glRotatef(atan2(translateleftright, translateforwardbackwards) * 180 / 3.14, 0, 1, 0); // change direction of robot (drift style)
 }
 
 void displayText(float x, float y, int r, int g, int b, string input) {
@@ -106,11 +115,11 @@ double handleRobotForwardMovement(double current_z)
 {
     if (ismovingforward)
     {
-        if (current_z >= 2.9)
+        if (current_z >= 2.9) // out of bonds
         {
             current_z = 2.7;
         }
-        else if (current_z <= -2.9)
+        else if (current_z <= -2.9) // out of bonds
         {
         current_z = -2.7;
         }
@@ -127,11 +136,11 @@ double handleRobotBackwardsMovement(double current_z)
 {
     if (ismovingbackwards)
     {
-        if (current_z >= 2.9)
+        if (current_z >= 2.9) // out of bonds
         {
             current_z = 2.7;
         }
-        else if (current_z <= -2.9)
+        else if (current_z <= -2.9) // out of bonds
         {
             current_z = -2.7;
         }
@@ -148,11 +157,11 @@ double handleRobotLeftMovement(double current_x)
 {
     if (ismovingleft)
     {
-        if (current_x >= 2.9)
+        if (current_x >= 2.9) // out of bonds
         {
             current_x = 2.7;
         }
-        else if (current_x <= -2.9)
+        else if (current_x <= -2.9) // out of bonds
         {
             current_x = -2.7;
         }
@@ -169,11 +178,11 @@ double handleRobotRightMovement(double current_x)
 {
     if (ismovingright)
     {
-        if (current_x >= 2.9)
+        if (current_x >= 2.9) // out of bonds
         {
             current_x = 2.7;
         }
-        else if (current_x <= -2.9)
+        else if (current_x <= -2.9) // out of bonds
         {
             current_x = -2.7;
         }
@@ -286,7 +295,7 @@ void Init()
 {
 
     //tex_2d = SOIL_load_OGL_texture("moon.png", SOIL_LOAD_AUTO, SOIL_CREATE_NEW_ID,
-      //  SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
+    //    SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
     glBindTexture(GL_TEXTURE_2D, tex_2d);
     glClearColor(0, 0, 0, 1); // 
     glEnable(GL_LIGHT0);
@@ -306,11 +315,11 @@ void Init()
     glLightfv(GL_LIGHT2, GL_DIFFUSE, light_diffuse);
     glLightfv(GL_LIGHT2, GL_SPECULAR, light_specular);
     GLfloat light_position[] = { 1.0, 1.0, 1.0};
-    glLightfv(GL_LIGHT0, GL_POSITION, light_position); // Licht Nr. 0 rechts oben
+    glLightfv(GL_LIGHT0, GL_POSITION, light_position); // Licht Nr. 0
     GLfloat light_position1[] = { -0.5, -1.0, -1.0 };
-    glLightfv(GL_LIGHT1, GL_POSITION, light_position1); // Licht Nr. 0 rechts oben
+    glLightfv(GL_LIGHT1, GL_POSITION, light_position1); // Licht Nr. 1 
     GLfloat light_position2[] = { -1.0, 1.0, 1.0 };
-    glLightfv(GL_LIGHT2, GL_POSITION, light_position2); // Licht Nr. 0 rechts oben
+    glLightfv(GL_LIGHT2, GL_POSITION, light_position2); // Licht Nr. 2 
     glEnable(GL_COLOR_MATERIAL);
     // z-Buffer
     glEnable(GL_DEPTH_TEST);
@@ -336,30 +345,23 @@ void RenderScene()
     draw_cylinder(0.3, 0, 255, 255, 0);
     glPopMatrix();
     
-
+    //displays time left
     displayText(1, 4.7, 1, 1, 0, "time left: " + to_string(timeLeft / 1000 ));
-
+    displayText(1, 4.6, 1, 1, 0, "points: " + to_string(points));
     draw_floor();
     glPushMatrix();
     move_robot();
     draw_robot();
     glPopMatrix();
     //secret wuerfel 1
-    glPushMatrix();
-    glTranslatef(1, 2, 0.5);
-    Wuerfel_ohne_Farben(0.2);
-    glPopMatrix();
-    //secret wuerfel 2
-    glPushMatrix();
-    glTranslatef(-1, 2, -0.5);
-    Wuerfel_ohne_Farben(0.2);
-    glPopMatrix();
-    //secret wuerfel 3
-    glPushMatrix();
-    glTranslatef(-3, 2, -1.5);
-    Wuerfel_ohne_Farben(0.2);
-    glPopMatrix();
+    srand((unsigned)time(0));
 
+    if (!isOnTarget && customBool) {
+        glPushMatrix();
+        glTranslatef(-1, 2, 0.5);
+        Wuerfel_ohne_Farben(0.2);
+        glPopMatrix();
+    }
 
     glutSwapBuffers();
 }
@@ -392,13 +394,12 @@ void Reshape(int width, int height)
 void Animate(int value)
 {
     // RenderScene aufrufen
-    glutPostRedisplay();
     // Timer wieder registrieren - Animate wird so nach 10 msec mit value+=1 aufgerufen.
+    int localpointscounter = 0;
     int wait_msec = 1;
     glutTimerFunc(wait_msec, Animate, timeLeft-=5);
     cout << translateforwardbackwards << endl;
     cout << translateleftright << endl;
-    displayText(0, 0, 1, 1, 0, "timeleft=" + to_string(timeLeft));
 
     if (timeLeft == 0)
     {
@@ -406,11 +407,20 @@ void Animate(int value)
         exit(0);
     }
 
+    if (translateforwardbackwards == -1.4 || translateleftright == -1.2) {
+        isOnTarget = true;
+        customBool = false;
+        points++;
+
+    }
+
 
     translateforwardbackwards = handleRobotForwardMovement(translateforwardbackwards);
     translateforwardbackwards = handleRobotBackwardsMovement(translateforwardbackwards);
     translateleftright = handleRobotLeftMovement(translateleftright);
     translateleftright = handleRobotRightMovement(translateleftright);
+
+    glutPostRedisplay();
 }
 
 int main(int argc, char** argv)
