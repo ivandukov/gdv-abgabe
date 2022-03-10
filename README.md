@@ -1,9 +1,10 @@
 # GDV Alternative Prüfung WS 2022
 
 ## **Gruppe**
-
 Saša Bojanic - 761314  
 Ivan Dukov   - 
+
+## **Video-Link**
 
 ## **Roboter-Steuerung**
 
@@ -12,3 +13,4 @@ Ivan Dukov   -
 - A: Links
 - D: Rechts
 - E: Aktuelle Position des Roboters auf Konsole ausgeben
+
