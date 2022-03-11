@@ -1,439 +1,393 @@
-#include <iostream> 
-#include <GL/freeglut.h> 
-#include <GL/SOIL.h>
-#include "Wuerfel.h"
+#include <iostream>
 #include <string>
-#include <cstdlib> 
-#include <ctime> 
-
+#include <sstream>
+#include <vector>
+#include <fstream>
+#include <GL/freeglut.h> 
 using namespace std;
+#include "Wuerfel.h"
+#include "Objects.h"
+#include "Wuerfel_mit_Normalen.h"
 
-bool ismovingforward = false;
-bool ismovingbackwards = false;
-bool ismovingleft = false;
-bool ismovingright = false;
-bool isOnTarget = false;
-bool customBool = true;
+// siehe keyPressedUp und keyPressedDown
+bool movingUp = false;
+bool movingDown = false;
+bool movingLeft = false;
+bool movingRight = false;
 
-//idea - map cube cordinates to robot cordinates
+// Aktuelle Position des Roboters
+float currentX = 0.0;
+float currentZ = 0.0;
 
-/*  Macro for sin & cos in degrees */
-#define Cos(th) cos(PI_2/180*(th))
-#define Sin(th) sin(PI_2/180*(th))
-#define DEF_D 3
-#define PI_2 3.1415926535898
-double translateforwardbackwards = 0.0;
-double translateleftright = 0.0;
-double secretCubePositionx = 0.0;
-double secretCubePositiony = 0.0;
-int points = 0;
+// Detektionsgrenzen der Cubes
+float cubeXmin = 0.0;
+float cubeXmax = 0.0;
+float cubeZmin = 0.0;
+float cubeZmax = 0.0;
+
+/**
+ * wird inkrementiert, sobald ein 
+ * Cube gesammelt wurde, damit der naechste
+ * gespawnt werden kann
+ */
+int currentCubeIndex = 0;
+
+/**
+ * Rotation des Cubes 
+ */
+GLfloat drehwinkel = 0.0; 
+
+/**
+ * facing direction des Roboters 
+ */
+float currentangle = 0.0;
+
+/**
+ * aktueller Punktestand des Spielers 
+ */
+int points = 0;  
+
+/**
+ * Countdown des Spiels in ms 
+ */
 int timeLeft = 60000;
-GLuint tex_2d;         // Textur-ID, which does not work
 
-void move_robot()
+struct CubeCoordinate
 {
-    glTranslatef(0.0, 0.0, translateforwardbackwards); // tatsaechliche Bewegung d. Baggers (vorwaerts)
-    glTranslatef(translateleftright, 0.0, 0.0); // tatsaechliche Bewegung d. Baggers (seitlich)
-    glRotatef(atan2(translateleftright, translateforwardbackwards) * 180 / 3.14, 0, 1, 0); // change direction of robot (drift style)
-}
+    float xpos;
+    float zpos;
+};
 
-void displayText(float x, float y, int r, int g, int b, string input) {
+/**
+ * alle Koordinaten der Cubes,
+ * die der Roboter sammeln soll
+ */
+vector<CubeCoordinate> cubecoordinates {};
 
-    glColor3f(r, g, b);
-    glRasterPos2f(x, y);
-    for (int i = 0; i < input.size(); i++) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, input[i]);
-    }
-}
-
-void draw_cylinder(GLfloat radius, GLfloat height, GLubyte R, GLubyte G, GLubyte B)
+/**
+ * @name  dateilesen
+ * @brief Hier werden alle Koordinaten aus coordinates.txt für die 
+ *        sammelbaren Gegenstände gelesen und in cubecoordinates 
+ *        gespeichert,
+ *        wird in main() aufgerufen
+ */
+void readFile()
 {
-    GLfloat x = 0.0;
-    GLfloat y = 0.0;
-    GLfloat angle = 0.0;
-    GLfloat angle_stepsize = 0.1;
-    float PI = 3.141;
+    ifstream inFile("coordinates.txt");
 
-    /** Draw the tube */
-    glColor3ub(R - 40, G - 40, B - 40);
-    glBegin(GL_QUAD_STRIP);
-    angle = 0.0;
-    while (angle < 2 * PI)
+    if(!inFile.is_open())
     {
-        x = radius * cos(angle);
-        y = radius * sin(angle);
-        glVertex3f(x, y, height);
-        glVertex3f(x, y, 0.0);
-        angle = angle + angle_stepsize;
+        throw invalid_argument("coordinates.txt cannot be opened!\n");
     }
-    glVertex3f(radius, 0.0, height);
-    glVertex3f(radius, 0.0, 0.0);
-    glEnd();
 
-    /** Draw the circle on top of cylinder */
-    glColor3ub(R, G, B);
-    glBegin(GL_POLYGON);
-    angle = 0.0;
-    while (angle < 2 * PI) {
-        x = radius * cos(angle);
-        y = radius * sin(angle);
-        glVertex3f(x, y, height);
-        angle = angle + angle_stepsize;
+    string line {};
+    while(getline(inFile, line))
+    {
+        string XPOS {};
+        string ZPOS {};
+        istringstream iss(line);
+        getline(iss, XPOS, ';');
+        getline(iss, ZPOS);
+        CubeCoordinate* newCubeCoordinate = new CubeCoordinate; 
+        newCubeCoordinate->xpos = stof(XPOS);
+        newCubeCoordinate->zpos = stof(ZPOS);
+        cubecoordinates.push_back(*newCubeCoordinate);
     }
-    glVertex3f(radius, 0.0, height);
-    glEnd();
+    cout << "Cube-Count: " << cubecoordinates.size() << endl;
+    inFile.close();
 }
 
-void handleUserInput(unsigned char key, int x, int y)
+/**
+ * @name  handleCamera
+ * @brief Hier kann man die Kameraposition einstellen
+ */
+void handleCamera()
+{
+    // Kameraposition, Blickwinkel, Up-Vector
+    //gluLookAt(0.75, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Ansicht schraeg
+    //gluLookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);  // Ansicht von vorne
+    //gluLookAt(0.0, 0.7, -1.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Ansicht von hinten
+    //gluLookAt(0.0, 5.0, -1.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Ansicht von oben
+    // gluLookAt(0.0, 0.7, 1.5, currentX, 0.0, currentZ, 0.0, 1.0, 0.0); // folgende Kamera
+    gluLookAt(currentX, 5.0, currentZ - 1.5, currentX, 0.0, currentZ, 0.0, 1.0, 0.0); // Ansicht von oben (folgend)
+}
+
+/**
+ * @name  keyPressedDown
+ * @brief Hier reagiert das Programm auf gedrückte Tasten 
+ *        wird in main() aufgerufen
+ */
+void keyPressedDown(unsigned char key, int x, int y)
+{
+    switch(key)
+    {
+        case 'w': // vorwaerts
+        {
+            movingUp = true;
+            break;
+        }
+        case 's': // rueckwaerts
+        {
+            movingDown = true;
+            break;
+        }
+        case 'a': // links
+        {
+            movingLeft = true;
+            break;
+        }
+        case 'd': // rechts
+        {
+            movingRight = true;
+            break;
+        }
+        case 'e':
+        {
+            cout << "\nx = " << currentX << endl
+                 << "z = " << currentZ << "\n\n";
+            break;
+        }
+        default:
+        {
+            break;
+        }
+    }
+}
+
+/**
+ * @name  keyPressedUp
+ * @brief Hier reagiert das Programm, wenn die Tasten NICHT mehr
+ *        gedrückt werden
+ *        wird in main() augerufen
+ */
+void keyPressedUp(unsigned char key, int x, int y)
 {
     switch (key)
     {
-    case 'w':
-    {
-        ismovingforward = true;
-        break;
-    }
-    case 's':
-    {
-        ismovingbackwards = true;
-        break;
-    }
-    case 'a':
-    {
-        ismovingleft = true;
-        break;
-    }
-    case 'd':
-    {
-        ismovingright = true;
-        break;
-    }
+        case 'w': // vorwaerts
+        {
+            movingUp = false;
+            break;
+        }
+        case 's': // rueckwaerts
+        {
+            movingDown = false;
+            break;
+        }
+        case 'a': // links
+        {
+            movingLeft = false;
+            break;
+        }
+        case 'd': // rechts
+        {
+            movingRight = false;
+            break;
+        }
+        default:
+        {
+            break;
+        }
     }
 }
-
-double handleRobotForwardMovement(double current_z)
-{
-    if (ismovingforward)
-    {
-        if (current_z >= 2.9) // out of bonds
-        {
-            current_z = 2.7;
-        }
-        else if (current_z <= -2.9) // out of bonds
-        {
-        current_z = -2.7;
-        }
-        else
-        {
-            current_z += 0.1;
-            ismovingforward = false;
-        }
-    }
-    return current_z;
-}
-
-double handleRobotBackwardsMovement(double current_z)
-{
-    if (ismovingbackwards)
-    {
-        if (current_z >= 2.9) // out of bonds
-        {
-            current_z = 2.7;
-        }
-        else if (current_z <= -2.9) // out of bonds
-        {
-            current_z = -2.7;
-        }
-        else
-        {
-            current_z -= 0.1;
-            ismovingbackwards = false;
-        }
-    }
-    return current_z;
-}
-
-double handleRobotLeftMovement(double current_x)
-{
-    if (ismovingleft)
-    {
-        if (current_x >= 2.9) // out of bonds
-        {
-            current_x = 2.7;
-        }
-        else if (current_x <= -2.9) // out of bonds
-        {
-            current_x = -2.7;
-        }
-        else
-        {
-            current_x += 0.1;
-            ismovingleft = false;
-        }
-    }
-    return current_x;
-}
-
-double handleRobotRightMovement(double current_x)
-{
-    if (ismovingright)
-    {
-        if (current_x >= 2.9) // out of bonds
-        {
-            current_x = 2.7;
-        }
-        else if (current_x <= -2.9) // out of bonds
-        {
-            current_x = -2.7;
-        }
-        else
-        {
-            current_x -= 0.1;
-            ismovingright = false;
-        }
-    }
-    return current_x;
-}
-
-void handleCamera()
-{
-    //Kameraposition, Blickwinkel und Up-Vector
-    //gluLookAt(0.75, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Ansicht schraeg
-    //gluLookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Ansicht von vorne
-     //gluLookAt(0.0, 0.5, -1.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Ansicht von hinten
-    gluLookAt(0.0, 7.0, -1.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Ansicht von hinten
-}
-
-
-void draw_robot()
-{
-    glPushMatrix();
-    // Kopf
-    glPushMatrix();
-    glTranslatef(0.0, 0.15, 0.0); // Kopf positionieren
-    glPushMatrix();
-    glTranslatef(0.0, 0.6, 0.2);
-    glNormal3f(0.0f, 0.0f, 1.0f);
-    glBegin(GL_TRIANGLES);
-    for (int k = 0; k <= 360; k += DEF_D) {
-        glColor4f(1.0, 1.0, 0.0,1.0);
-        glVertex3f(0, 0, 1);
-        glVertex3f(Cos(k), Sin(k), 0);
-        glVertex3f(Cos(k + DEF_D), Sin(k + DEF_D), 0);
-    }
-    glEnd();
-    glPopMatrix();
-    Wuerfel(0.1, 0.1, 0.1); // Wuerfel mit Breite (x), H�he (y), L�nge (z)
-    glPopMatrix();
-
-    // Koerper
-    glPushMatrix();
-    Wuerfel(0.2, 0.2, 0.2); // Koerper erzeugen
-    glPopMatrix();
-
-    // rechter Arm
-    glPushMatrix();
-    glRotatef(90, 1., 0., 0.);
-    glTranslatef(0.13, 0.14, -0.02);
-    Wuerfel(0.05, 0.2, 0.05);
-    glPopMatrix();
-
-    // linker Arm
-    glPushMatrix();
-    glRotatef(90, 1., 0., 0.);
-    glTranslatef(-0.13, 0.14, -0.02);
-    Wuerfel(0.05, 0.2, 0.05);
-    glPopMatrix();
-
-    // linkes Rad
-    glPushMatrix();
-    glTranslatef(-0.1, -0.11, 0.0); // (links/rechts, oben/unten, vorne/hinten)
-    glRotatef(-90, 0.0, 1.0, 0.0);
-    draw_cylinder(0.05, 0.04, 0.0, 1.0, 0.0);
-    glPopMatrix();
-
-    // rechtes Rad
-    glPushMatrix();
-    glTranslatef(0.1, -0.11, 0.0); // (links/rechts, oben/unten, vorne/hinten)
-    glRotatef(90, 0.0, 1.0, 0.0);
-    draw_cylinder(0.05, 0.04, 0.0, 1.0, 0.0);
-    glPopMatrix();
-    glPopMatrix();
-}
-
 
 /**
- * @brief erstellt die Flaeche, auf der sich der Roboter
- *        bewegen soll
+ * @name  robot_movement
+ * @brief this is where the directio of movement is decided and the
+ *        paramters are set
+ *        wird in RenderScene() aufgerufen
  */
-void draw_floor()
+void robot_movement()
 {
-    glPushMatrix();
-    glEnable(GL_TEXTURE_2D);
-    glTranslatef(0.0, -0., 0.0);
-    glColor4f(0, 0, 0, 1.0);
-    glBegin(GL_POLYGON);
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(0.0, 0.0, -10.0);
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(-10.0, 0.0, 10.0);
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex3f(0.0, 0.0, 10.0);
-    glTexCoord2f(0.0f, 1.0f); 
-    glVertex3f(10.0, 0.0, 0.0);
-    glVertex3f(0.0, 0.0, -10.0);
-    glEnd();
-    glDisable(GL_TEXTURE_2D);
-    glPopMatrix();
+    if(movingUp)
+    {
+        currentangle = 360.0;
+        currentZ += 0.02f;
+    }
+    else if(movingDown)
+    {
+        currentangle = 180.0;
+        currentZ -= 0.02f;
+    }
+    else if(movingLeft)
+    {
+        currentangle = 90.0;
+        currentX += 0.02f;
+    }
+    else if (movingRight)
+    {
+        currentangle = 270.0;
+        currentX -= 0.02f;
+    }
 }
 
 /**
+ * @name  displayText
+ * @brief gibt den String text in RGB-Farben aus 
+ */
+void displayText(float x, float y, int r, int g, int b, string text) 
+{
+    glColor3f(r, g, b);
+    glRasterPos2f(x, y);
+    for(int i = 0; i < text.size(); i++) 
+    {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
+    }
+}
+
+/**
+ * @name  spawnCube
+ * @brief spawnt 1 drehenden cube aus cubecoordinates 
+ *        und setzt  "Hitbox"-Koordinaten,
+ *        wird in RenderScene() aufgerufen 
+ */
+void spawnCube(int index)
+{
+     CubeCoordinate cube = cubecoordinates[index];
+
+     // Detektionsgrenzen der Cubes definieren
+     cubeXmin = cube.xpos - 0.1f;
+     cubeXmax = cube.xpos + 0.1f;
+     cubeZmin = cube.zpos - 0.1f;
+     cubeZmax = cube.zpos + 0.1f;
+     
+     glPushMatrix();
+        glNormal3d(0, 0, 1);
+        glTranslatef(cube.xpos, 0.0, cube.zpos); // Wuerfel positionieren
+        glRotatef(drehwinkel, 0.0, 1.0, 0.0);   // Wuerfel in Drehung versetzen 
+        Wuerfel_mit_Normalen(0.1, 0.1, 0.1); // Wuerfel erzeugen
+     glPopMatrix();
+}
+
+/**
+ * @name  handleLight
+ * @brief übernimmt Licht-Konfiguration der Szene,
+ *        wird in Init() aufgerufen
+ */
+void handleLight()
+{
+    glEnable(GL_LIGHTING); // enable lighting
+    glEnable(GL_LIGHT0);
+    GLfloat light_position[] = {currentX, 1.0, currentZ, 1.0};
+    glLightfv(GL_LIGHT0, GL_POSITION, light_position); // Licht Nr. 0 rechts oben
+    glEnable(GL_COLOR_MATERIAL);
+    glEnable(GL_COLOR_MATERIAL);
+    glClearDepth(1.0);
+    glEnable(GL_NORMALIZE);
+    
+}
+
+/**
+ * @name  Init
  * @brief Aktionen, die zum Programmstart einmalig
  *		  durchgefuehrt werden sollen
  */
 void Init()
 {
-
-    //tex_2d = SOIL_load_OGL_texture("moon.png", SOIL_LOAD_AUTO, SOIL_CREATE_NEW_ID,
-    //    SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
-    glBindTexture(GL_TEXTURE_2D, tex_2d);
-    glClearColor(0, 0, 0, 1); // 
-    glEnable(GL_LIGHT0);
-    glEnable(GL_LIGHT1);
-    glEnable(GL_LIGHT2);
-    glEnable(GL_LIGHTING);
-    GLfloat light_ambient[] = { 0.0, 0.0, 0.0, 1.0 };
-    GLfloat light_diffuse[] = { 1.0, 1.0, 1.0, 1.0 };
-    GLfloat light_specular[] = { 1.0, 1.0, 1.0, 1.0 };
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
-    glLightfv(GL_LIGHT1, GL_AMBIENT, light_ambient);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, light_diffuse);
-    glLightfv(GL_LIGHT1, GL_SPECULAR, light_specular);
-    glLightfv(GL_LIGHT2, GL_AMBIENT, light_ambient);
-    glLightfv(GL_LIGHT2, GL_DIFFUSE, light_diffuse);
-    glLightfv(GL_LIGHT2, GL_SPECULAR, light_specular);
-    GLfloat light_position[] = { 1.0, 1.0, 1.0};
-    glLightfv(GL_LIGHT0, GL_POSITION, light_position); // Licht Nr. 0
-    GLfloat light_position1[] = { -0.5, -1.0, -1.0 };
-    glLightfv(GL_LIGHT1, GL_POSITION, light_position1); // Licht Nr. 1 
-    GLfloat light_position2[] = { -1.0, 1.0, 1.0 };
-    glLightfv(GL_LIGHT2, GL_POSITION, light_position2); // Licht Nr. 2 
-    glEnable(GL_COLOR_MATERIAL);
-    // z-Buffer
-    glEnable(GL_DEPTH_TEST);
-    glClearDepth(1.0);
-    // Normalen fuer korrekte Beleuchtungs-Berechnung normalisieren
-    glEnable(GL_NORMALIZE);
+    glClearColor(0, 0, 0, 1);
+    handleLight();
+    glEnable(GL_DEPTH_TEST); // z-Buffer
 }
 
 /**
- * @brief Code der in jedem Frame ausgefuehrt werden soll
- *        Die Arm- und Beinrotation geschehen um die x-Achse
+ *  @name  RenderScene
+ *  @brief Code der in jedem Frame ausgefuehrt werden soll
+ *         Die Arm- und Beinrotation geschehen um die x-Achse
  */
 void RenderScene()
 {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Puffer loeschen
     glLoadIdentity(); // Aktuelle Model-/View-Transformations-Matrix zuruecksetzen
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    handleCamera();
-    //fake sun
-    glPushMatrix();
-    glTranslatef(0.0, 1.8, 1.5);
-    glRotatef(90, 1, 0, 0);
-    draw_cylinder(0.3, 0, 255, 255, 0);
-    glPopMatrix();
-    
-    //displays time left
-    displayText(1, 4.7, 1, 1, 0, "time left: " + to_string(timeLeft / 1000 ));
-    displayText(1, 4.6, 1, 1, 0, "points: " + to_string(points));
-    draw_floor();
-    glPushMatrix();
-    move_robot();
-    draw_robot();
-    glPopMatrix();
-    //secret wuerfel 1
-    srand((unsigned)time(0));
+    handleCamera(); // Kameraposition und Richtung
+    draw_floor();   // Boden erzeugen
 
-    if (!isOnTarget && customBool) {
-        glPushMatrix();
-        glTranslatef(-1, 2, 0.5);
-        Wuerfel_ohne_Farben(0.2);
-        glPopMatrix();
-    }
+    glPushMatrix();
+        robot_movement(); // Berechnung der Bewegung d. Roboters
+        glTranslatef(currentX, 0.0, currentZ); // Tatsaechliche Bewegung
+        glRotatef(currentangle, 0.0, 1.0, 0.0); // Facing Direction 
+        draw_robot(); // Roboter erzeugen
+    glPopMatrix();
+
+    spawnCube(currentCubeIndex); // spawnt Cube aus cubecoordinates
 
     glutSwapBuffers();
+    glFlush(); // forces execution of OpenGL functions in finite time.
 }
 
 /**
- * @brief Reaktionen auf eine Veraenderung der Groe�e des
+ * @name  Reshape
+ * @brief Reaktionen auf eine Veraenderung der Groeße des
  *        Grafikfensters
  */
 void Reshape(int width, int height)
 {
-    // Matrix fuer Transformation: Frustum -> viewport
-    glMatrixMode(GL_PROJECTION);
-    // Aktuelle Transformations-Matrix zuruecksetzen
-    glLoadIdentity();
-    // Viewport definieren
-    glViewport(0, 0, width, height);
-    // Kamera definieren (intrinsische Kameraparameter)
+    glMatrixMode(GL_PROJECTION); // Matrix fuer Transformation: Frustum -> viewport
+    glLoadIdentity(); // Akt. Transformations-Matrix zuruecksetzen
+    glViewport(0, 0, width, height);      // Viewport definieren
     //glOrtho(-1., 1., -1., 1., 0., 10.); // orthogonale Kamera
-    gluPerspective(45.0, 1, 0.1, 10.0); // perspektivische Kamera
-    // Matrix fuer Modellierung/Viewing
-    glMatrixMode(GL_MODELVIEW);
+    gluPerspective(45.0, 1, 0.1, 10.0);   // perspektivische Kamera
+    glMatrixMode(GL_MODELVIEW); // Matrix fuer Modellierung/Viewing
 }
 
 /**
- * @brief Berechnungen durchgefuehrt, die zu einer Animation der Szene
- *		  erforderlich sind. Dieser Prozess laeuft im Hintergrund und wird alle
- *		  1000 msec aufgerufen. Der Parameter "value" wird einfach nur um eins
- *		  inkrementiert und dem Callback wieder uebergeben.
+ * @name  animateCube
+ * @param uebernimmt Drehung der einzusammelnden Cubes
+ *        und die "Hitbox", prueft also ob der Roboter 
+ *        einen Cube eingesammelt hat.
+ *        wird in Animate() aufgerufen
+ */
+void animateCube()
+{
+    // Drehung der Cubes ausfuehren
+    drehwinkel += 5.0f;
+    if(drehwinkel > 360.0f)
+    {
+        drehwinkel -= 360.0f;
+    }
+
+    // Pruefen, ob der Cube vom Roboter eingesammelt wurde
+    if((currentX <= cubeXmax && currentX >= cubeXmin) &&
+       (currentZ <= cubeZmax && currentZ >= cubeZmin))
+    {
+        cout << "gotcha!\n";
+        currentCubeIndex++;
+        points = currentCubeIndex;
+    }
+}
+
+/**
+ * @name  Animate
+ * @brief Berechnungen, die zu einer Animation der Szene erforderlich sind.
+ *		  Prozess laeuft im Hintergrund und wird alle 1000 msec aufgerufen.
+ *		  Der Parameter "value" wird einfach nur um eins inkrementiert
+ *		  und dem Callback wieder uebergeben.
  */
 void Animate(int value)
 {
-    // RenderScene aufrufen
-    // Timer wieder registrieren - Animate wird so nach 10 msec mit value+=1 aufgerufen.
-    int localpointscounter = 0;
-    int wait_msec = 1;
-    glutTimerFunc(wait_msec, Animate, timeLeft-=5);
-    cout << translateforwardbackwards << endl;
-    cout << translateleftright << endl;
-
-    if (timeLeft == 0)
-    {
-        displayText(0.0, 0, 1, 0, 0, "GAME OVER");
-        exit(0);
-    }
-
-    if (translateforwardbackwards == -1.4 || translateleftright == -1.2) {
-        isOnTarget = true;
-        customBool = false;
-        points++;
-
-    }
-
-
-    translateforwardbackwards = handleRobotForwardMovement(translateforwardbackwards);
-    translateforwardbackwards = handleRobotBackwardsMovement(translateforwardbackwards);
-    translateleftright = handleRobotLeftMovement(translateleftright);
-    translateleftright = handleRobotRightMovement(translateleftright);
-
-    glutPostRedisplay();
+    glutPostRedisplay(); // RenderScene aufrufen
+    int wait_msec = 10; // Timer wieder registrieren 
+    glutTimerFunc(wait_msec, Animate, ++value); // Animate wird nach 10 msec mit value+=1 aufgerufen
+    animateCube();
 }
 
+/**
+ * @name  main
+ * @brief Hauptprogramm
+ */
 int main(int argc, char** argv)
 {
+    readFile();
     glutInit(&argc, argv); // GLUT initialisieren
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(600, 600); // Fenster-Konfiguration
-    glutCreateWindow("glut output");	// Fenster-Erzeugung
+    glutCreateWindow("Roboter"); // Fenster-Erzeugung
     glutDisplayFunc(RenderScene); // Zeichenfunktion bekannt machen
     glutReshapeFunc(Reshape);
-    // TimerCallback registrieren; wird nach 10 msec aufgerufen mit Parameter 0  
-    glutTimerFunc(10, Animate, 0);
-    glutKeyboardFunc(handleUserInput);
+    // TimerCallback registrieren 
+    glutTimerFunc(10, Animate, 0); // wird nach 10 msec aufgerufen mit Parameter 0  
+    glutKeyboardFunc(keyPressedDown); // Taste gedrueckt
+    glutKeyboardUpFunc(keyPressedUp); // Taste losgelassen
     Init();
     glutMainLoop();
     return 0;
