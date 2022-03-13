@@ -4,9 +4,14 @@
 #include "Wuerfel_mit_Normalen.h"
 using namespace std;
 
+#define Cos(th) cos(PI_2/180*(th))
+#define Sin(th) sin(PI_2/180*(th))
+#define DEF_D 3
+#define PI_2 3.1415926535898
+
 /**
- * @name  draw_cylinder 
- * @brief Erzeugt einen 3D-Zylinder 
+ * @name  draw_cylinder
+ * @brief Erzeugt einen 3D-Zylinder mit Höhe, Radius und Farben
  */
 void draw_cylinder(GLfloat radius, GLfloat height, GLubyte R, GLubyte G, GLubyte B)
 {
@@ -38,7 +43,7 @@ void draw_cylinder(GLfloat radius, GLfloat height, GLubyte R, GLubyte G, GLubyte
     glBegin(GL_POLYGON);
         glNormal3f(0.0f, 0.0f, 1.0f);
         angle = 0.0;
-        while (angle < 2 * PI) 
+        while (angle < 2 * PI)
         {
             x = radius * cos(angle);
             y = radius * sin(angle);
@@ -51,7 +56,7 @@ void draw_cylinder(GLfloat radius, GLfloat height, GLubyte R, GLubyte G, GLubyte
 
 /**
  * @name  draw_robot
- * @brief Erzeugt einen kleinen Roboter mit 2 Raedern 
+ * @brief Erzeugt einen kleinen Roboter mit 2 Raedern
  */
 void draw_robot()
 {
@@ -59,26 +64,26 @@ void draw_robot()
         // Kopf
         glPushMatrix();
             glTranslatef(0.0, 0.15, 0.0); // Kopf positionieren
-            Wuerfel_mit_Normalen(0.1, 0.1, 0.1); // Wuerfel mit Breite (x), Höhe (y), Laenge (z)
+            Roboter_Kopf(0.1, 0.1, 0.1); // Wuerfel mit Breite (x), Höhe (y), Laenge (z)
         glPopMatrix();
 
         // Koerper
         glPushMatrix();
-            Wuerfel_mit_Normalen(0.2, 0.2, 0.2); // Koerper erzeugen
+            Roboter_Body(0.2, 0.2, 0.2); // Koerper erzeugen
         glPopMatrix();
 
         // rechter Arm
         glPushMatrix();
             glRotatef(90, 1., 0., 0.);
             glTranslatef(0.13, 0.14, -0.02);
-            Wuerfel_mit_Normalen(0.05, 0.2, 0.05);
+            Wuerfel_blau(0.05, 0.2, 0.05);
         glPopMatrix();
 
         // linker Arm
         glPushMatrix();
             glRotatef(90, 1., 0., 0.);
             glTranslatef(-0.13, 0.14, -0.02);
-            Wuerfel_mit_Normalen(0.05, 0.2, 0.05);
+            Wuerfel_blau(0.05, 0.2, 0.05);
         glPopMatrix();
 
         // linkes Rad
@@ -93,27 +98,65 @@ void draw_robot()
             glTranslatef(0.1, -0.11, 0.0); // (links/rechts, oben/unten, vorne/hinten)
             glRotatef(90, 0.0, 1.0, 0.0);
             draw_cylinder(0.05, 0.04, 0.0, 1.0, 0.0);
-            glPopMatrix();
+        glPopMatrix();
     glPopMatrix();
 }
 
-
-/**
- * @name  draw_floor
- * @brief erzeugt eine Flaeche, auf der sich der Roboter
- *        bewegen soll
- */
-void draw_floor()
+void draw_kegel()
 {
     glPushMatrix();
-        glTranslatef(0.0, -0.5, 0.0);
-        glColor4f(0.5, 0.5, 0.5, 1.0);
-        glBegin(GL_POLYGON);
-            glVertex3f(0.0, 0.0, -10.0);
-            glVertex3f(-10.0, 0.0, 10.0);
-            glVertex3f(0.0, 0.0, 10.0);
-            glVertex3f(10.0, 0.0, 0.0);
-            glVertex3f(0.0, 0.0, -10.0);
+        glScalef(0.25, 0.25, 0.5);
+        glTranslatef(-0.75, -0.5, 0.0);
+        glutSolidCone(1.0, 2.0, 70, 12);
+    glPopMatrix();
+
+}
+
+/**
+ * @name draw_rocket
+ * @brief Erzeugt eine Rakete
+ */
+void draw_rocket()
+{
+    
+    
+    glPushMatrix();
+       
+    glPopMatrix();
+
+    // KEGEL
+    glPushMatrix();
+        glTranslatef(-0.91, 1.5, -0.41);
+        glRotatef(260, 1.0, 0.0, 0.0);
+        draw_kegel();
+    glPopMatrix();
+
+    // ZYLINDER
+    glPushMatrix();
+        glColor3f(0.85, 0.85, 0.85);
+        glTranslatef(-1.099, 0.07, -0.03); // x -1.1
+        glRotatef(260, 1.0, 0.0, 0.0);
+        glutSolidCylinder(0.25, 1.55, 70, 12);
+    glPopMatrix();
+
+    glPushMatrix();
+        glColor3f(1.0, 0.0, 0.0);
+        glTranslatef(-0.91, -0.11, -0.05);
+        glBegin(GL_TRIANGLES);
+            glVertex3f(0.5, 0.0, 0.0);
+            glVertex3f(0.0, 0.5, 0.0);
+            glVertex3f(0.0, 0.0, 0.0);
+        glEnd();
+    glPopMatrix();
+
+    glPushMatrix();
+        glColor3f(1.0, 0.0, 0.0);
+        glTranslatef(-1.34, -0.11, -0.05);
+        glRotatef(180.0, 0.0, 1.0, 0.0);
+        glBegin(GL_TRIANGLES);
+            glVertex3f(0.5, 0.0, 0.0);
+            glVertex3f(0.0, 0.5, 0.0);
+            glVertex3f(0.0, 0.0, 0.0);
         glEnd();
     glPopMatrix();
 }
